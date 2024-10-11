@@ -64,20 +64,37 @@
 			border-radius: 4px;
 			cursor: pointer;
 		}
+
+		#output {
+			color: #eaeaea;
+			position: fixed;
+			top: 0;
+			left: 0;
+			padding: 1rem;
+			font-family: monospace;
+			mix-blend-mode: difference;
+			filter: contrast(50%);
+		}
 	</style>
 </head>
 
 <body>
 	<div id="loader">Loading COCO-SSD model...</div>
+
 	<div id="video-container">
 		<video id="video"
 					 autoplay
 					 playsinline></video>
 		<canvas id="detections"></canvas>
 	</div>
+
 	<button id="camera-button"
 					style="display: none">Start Camera</button>
+
+	<div id="output"></div>
+
 	<script>
+		const output = document.getElementById("output");
 		const videoContainer = document.getElementById("video-container");
 		const video = document.getElementById("video");
 		const loader = document.getElementById("loader");
@@ -88,10 +105,89 @@
 		let stream;
 		let videoWidth, videoHeight;
 
+		const MODEL_VERSION = '1'; // Update this when you want to invalidate the cache
+
 		async function loadModel() {
-			model = await cocoSsd.load();
-			loader.style.display = "none";
-			cameraButton.style.display = "inline-block";
+			try {
+				// Try to load the model configuration from cache first
+				const cachedConfig = await loadFromIndexedDB('cocoSsdConfig');
+				console.log("cachedConfig", cachedConfig);
+
+				if (cachedConfig) {
+					console.log('Model configuration loaded from IndexedDB cache');
+					model = await cocoSsd.load(cachedConfig);
+				} else {
+					console.log('Model configuration not found in cache. Loading default model...');
+					model = await cocoSsd.load();
+
+					// Save the model configuration to IndexedDB
+					const modelConfig = model.modelUrl || 'lite_mobilenet_v2';
+					await saveToIndexedDB('cocoSsdConfig', modelConfig);
+					console.log('Model configuration saved to IndexedDB cache');
+				}
+
+				console.log("model", model);
+
+				loader.style.display = "none";
+				cameraButton.style.display = "inline-block";
+			} catch (error) {
+				console.error('Error loading the model:', error);
+				alert('Failed to load the object detection model. Please refresh the page and try again.');
+			}
+		}
+
+		async function loadFromIndexedDB(key) {
+			return new Promise((resolve, reject) => {
+				const request = indexedDB.open('ModelCache', 1);
+
+				request.onerror = () => reject('IndexedDB access denied');
+
+				request.onsuccess = (event) => {
+					const db = event.target.result;
+					const transaction = db.transaction(['models'], 'readonly');
+					const objectStore = transaction.objectStore('models');
+					const modelRequest = objectStore.get(key);
+
+					modelRequest.onerror = () => reject('Error fetching from IndexedDB');
+					modelRequest.onsuccess = () => {
+						const config = modelRequest.result;
+						if (config && config.version === MODEL_VERSION) {
+							resolve(config.modelConfig);
+						} else {
+							resolve(null); // Config not found or version mismatch
+						}
+					};
+				};
+
+				request.onupgradeneeded = (event) => {
+					const db = event.target.result;
+					db.createObjectStore('models', { keyPath: 'key' });
+				};
+			});
+		}
+
+		async function saveToIndexedDB(key, modelConfig) {
+			return new Promise((resolve, reject) => {
+				const request = indexedDB.open('ModelCache', 1);
+
+				request.onerror = () => reject('IndexedDB access denied');
+
+				request.onsuccess = (event) => {
+					const db = event.target.result;
+					const transaction = db.transaction(['models'], 'readwrite');
+					const objectStore = transaction.objectStore('models');
+
+					const configData = {
+						key: key,
+						modelConfig: modelConfig,
+						version: MODEL_VERSION
+					};
+
+					const saveRequest = objectStore.put(configData);
+					saveRequest.onerror = () => reject('Error saving to IndexedDB');
+					saveRequest.onsuccess = () => resolve();
+				};
+			});
 		}
 
 		async function setupVideoStream(stream) {
@@ -172,6 +268,8 @@
 					x,
 					y > 10 ? y - 5 : 10
 				);
+
+				output.innerHTML = `${className} (${Math.round(score * 100)}%)`;
 			});
 		}
 
