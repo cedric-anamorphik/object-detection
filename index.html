@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport"
+				content="width=device-width, initial-scale=1.0" />
+	<title>Object Detection App (COCO-SSD)</title>
+	<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+	<style>
+		body {
+			margin: 0;
+			padding: 0;
+			background-color: #000;
+			color: #fff;
+			font-family: Arial, sans-serif;
+			text-align: center;
+			overflow: hidden;
+		}
+
+		#loader {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			font-size: 24px;
+		}
+
+		#video-container {
+			position: relative;
+			width: 100vw;
+			height: 100vh;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+		}
+
+		#video {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+		}
+
+		#detections {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			max-width: 100%;
+			max-height: 100%;
+		}
+
+		#camera-button {
+			position: absolute;
+			bottom: 20px;
+			left: 50%;
+			transform: translateX(-50%);
+			padding: 10px 20px;
+			font-size: 18px;
+			background-color: #fff;
+			color: #000;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="loader">Loading COCO-SSD model...</div>
+	<div id="video-container">
+		<video id="video"
+					 autoplay
+					 playsinline></video>
+		<canvas id="detections"></canvas>
+	</div>
+	<button id="camera-button"
+					style="display: none">Start Camera</button>
+	<script>
+		const videoContainer = document.getElementById("video-container");
+		const video = document.getElementById("video");
+		const loader = document.getElementById("loader");
+		const cameraButton = document.getElementById("camera-button");
+		const detectionsCanvas = document.getElementById("detections");
+		const ctx = detectionsCanvas.getContext("2d");
+		let model;
+		let stream;
+		let videoWidth, videoHeight;
+
+		async function loadModel() {
+			model = await cocoSsd.load();
+			loader.style.display = "none";
+			cameraButton.style.display = "inline-block";
+		}
+
+		async function setupVideoStream(stream) {
+			video.srcObject = stream;
+
+			await new Promise((resolve) => {
+				video.onloadedmetadata = resolve;
+			});
+
+			const videoWidth = video.videoWidth;
+			const videoHeight = video.videoHeight;
+			const aspectRatio = videoWidth / videoHeight;
+
+			// Set video dimensions based on aspect ratio
+			if (aspectRatio > 1) {
+				video.style.width = "100vw";
+				video.style.height = "auto";
+			} else {
+				video.style.width = "auto";
+				video.style.height = "100vh";
+			}
+
+			// Setup detection canvas
+			detectionsCanvas.width = videoWidth;
+			detectionsCanvas.height = videoHeight;
+			detectionsCanvas.style.aspectRatio = aspectRatio;
+
+			await video.play();
+			detectFrame();
+		}
+
+		async function startDetection() {
+			try {
+				stream = await navigator.mediaDevices.getUserMedia({
+					video: {
+						facingMode: { exact: "environment" },
+					},
+				});
+
+				await setupVideoStream(stream);
+
+			} catch (err) {
+				console.error("Error accessing the back camera:", err);
+				try {
+					// Fallback: try to access any available camera
+					const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+					await setupVideoStream(fallbackStream);
+				} catch (fallbackErr) {
+					console.error("Error accessing any camera:", fallbackErr);
+					// Handle the error (e.g., show a message to the user)
+				}
+			}
+		}
+
+		async function detectFrame() {
+			const predictions = await model.detect(video);
+			renderDetections(predictions);
+			requestAnimationFrame(detectFrame);
+		}
+
+		function renderDetections(predictions) {
+			ctx.clearRect(0, 0, detectionsCanvas.width, detectionsCanvas.height);
+			predictions.forEach((prediction) => {
+				const [x, y, width, height] = prediction.bbox;
+				const score = prediction.score;
+				const className = prediction.class;
+
+				ctx.beginPath();
+				ctx.rect(x, y, width, height);
+				ctx.lineWidth = 2;
+				ctx.strokeStyle = "red";
+				ctx.stroke();
+
+				ctx.font = "16px Arial";
+				ctx.fillStyle = "red";
+				ctx.fillText(
+					`${className} (${Math.round(score * 100)}%)`,
+					x,
+					y > 10 ? y - 5 : 10
+				);
+			});
+		}
+
+		cameraButton.addEventListener("click", () => {
+			cameraButton.style.display = "none";
+			startDetection();
+		});
+
+		loadModel();
+
+		// toggle videoContainer fullscreen on double tap
+		videoContainer.addEventListener("dblclick", () => {
+			if (document.fullscreenElement) {
+				document.exitFullscreen();
+			} else {
+				videoContainer.requestFullscreen();
+			}
+		});
+	</script>
+</body>
+
+</html>
