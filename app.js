@@ -40,7 +40,7 @@ async function loadModel() {
       await saveToIndexedDB("cocoSsdConfig", modelConfig);
       console.log("Model configuration saved to IndexedDB cache");
 
-      const modelFile = "/ssdlite_mobilenet_v2_model.json"; //model.path || "https://storage.googleapis.com/tfjs-models/savedmodel/ssdlite_mobilenet_v2/model.json";
+      const modelFile = "/assets/ssdlite_mobilenet_v2_model.json"; //model.path || "https://storage.googleapis.com/tfjs-models/savedmodel/ssdlite_mobilenet_v2/model.json";
       // const response = await fetch(modelFile);
       // modelData = await response.json();
 
