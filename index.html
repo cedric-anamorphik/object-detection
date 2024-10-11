@@ -8,7 +8,9 @@
       worker-src blob:; 
       child-src blob: gap:;
       img-src 'self' blob: data:;
-      default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:">
+			connect-src * blob: gap: content:
+      default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:
+			">
 	<meta name="viewport"
 				content="width=device-width, initial-scale=1.0" />
 
